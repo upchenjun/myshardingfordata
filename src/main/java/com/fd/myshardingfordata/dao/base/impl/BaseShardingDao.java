@@ -592,7 +592,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			}
 		}
 		throw new IllegalStateException(
-				ConnectionManager.getTbinfo(clazz).entrySet().iterator().next().getKey() + "没有定义主键！！");
+				String.format("%s没有定义主键！！", ConnectionManager.getTbinfo(clazz).entrySet().iterator().next().getKey()));
 	}
 
 	@Override
@@ -799,11 +799,11 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			if (crn != null) {
 				fd.setAccessible(true);
 				if (fd.get(pojo) == null) {
-					throw new IllegalArgumentException(fd.getName() + "切分字段数据不能为空！！");
+					throw new IllegalArgumentException(String.format("%s切分字段数据不能为空！！", fd.getName()));
 				}
 				long max = getTableMaxIdx(fd.get(pojo), fd.getType(), crn);
 				if (max >= maxTableCount) {
-					throw new IllegalStateException("超出了表拆分最大数量，最多只能拆分" + maxTableCount + "个表");
+					throw new IllegalStateException(String.format("超出了表拆分最大数量，最多只能拆分%s个表", maxTableCount));
 				}
 				String ctbname = getTableName(max, name);
 				if (!isExistTable(ctbname)) {
@@ -839,7 +839,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			}
 		}
 		if (idkey == null) {
-			throw new IllegalStateException(tbe.getKey() + "没有定义主键！！");
+			throw new IllegalStateException(String.format("%s没有定义主键！！", tbe.getKey()));
 		}
 		return idkey;
 	}
@@ -905,7 +905,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			max = getTbIdx(dt.toLocalDate().toEpochDay(), crn);
 
 		} else {
-			throw new IllegalStateException(type + "类型不能用来对数据进行切分，请使用int、long、string类型的字段");
+			throw new IllegalStateException(String.format("%s类型不能用来对数据进行切分，请使用int、long、string、date类型的字段", type));
 		}
 		return max;
 	}
@@ -1038,7 +1038,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				sb.append(curPage * pageSize);
 				return sb.toString();
 			}
-			throw new IllegalStateException("当前查询分页路由不支持：" + dpname + "数据库系统");
+			throw new IllegalStateException(String.format("当前查询分页路由不支持%s数据库系统", dpname));
 		} catch (SQLException e) {
 			e.printStackTrace();
 			throw new IllegalStateException("无法获取数据库名称");
@@ -1068,7 +1068,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				sb.append(" )   where  rownum_ > ").append((curPage - 1) * pageSize);
 				return sb.toString();
 			}
-			throw new IllegalStateException("当前查询分页路由不支持：" + dpname + "数据库系统");
+			throw new IllegalStateException(String.format("当前查询分页路由不支持：%s数据库系统", dpname));
 		} catch (SQLException e) {
 			e.printStackTrace();
 			throw new IllegalStateException("无法获取数据库名称");
@@ -1458,7 +1458,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				return p.getType();
 			}
 		}
-		throw new RuntimeException(pm.getPname() + ":字段没有定义...");
+		throw new IllegalArgumentException(String.format("%s字段没有定义...", pm.getPname()));
 	}
 
 	private void setcName(StringBuilder sb, Param pm, PropInfo p) {
@@ -2022,7 +2022,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 	private String getIndexColumns(PropInfo p) {
 		StringBuilder sbd = new StringBuilder(p.getCname());
-		if (p.getType() == String.class&&p.getLength()>p.getIndex().length()) {
+		if (p.getType() == String.class && p.getLength() > p.getIndex().length()) {
 			sbd.append("(").append(p.getIndex().length()).append(")");
 		}
 		if (p.getIndex().secondPropName() != null && !"".equals(p.getIndex().secondPropName().trim())) {

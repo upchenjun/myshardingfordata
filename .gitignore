@@ -1,0 +1,14 @@
+*.class
+.tern-project
+
+# Package Files #
+*.jar
+*.war
+*.ear
+/target
+.classpath
+.project
+.settings/
+.svn
+target/
+bin/
