@@ -195,7 +195,46 @@ public enum KSentences {
 			return "  DESC  ";
 		}
 	},
+	RIGHT_BRACKETS {
+		@Override
+		public String getValue() {
+			return ")";
+		}
+	},
+	LEFT_BRACKETS {
+		@Override
+		public String getValue() {
+			return "(";
+		}
+	},
+	/**
+	 * 逗号
+	 */
+	COMMA {
+		@Override
+		public String getValue() {
+			return ",";
+		}
+	},
+	/**
+	 * update SET VALUE =
+	 */
+	EQ {
+		@Override
+		public String getValue() {
+			return "=";
+		}
+	},
+	/**
+	 * update SET
+	 */
+	SET {
 
+		@Override
+		public String getValue() {
+			return "   SET   ";
+		}
+	},
 	/**
 	 * 去掉重复值
 	 */
