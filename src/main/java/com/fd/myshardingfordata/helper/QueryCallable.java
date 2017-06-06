@@ -26,14 +26,4 @@ public class QueryCallable implements Callable<QueryVo<ResultSet>> {
 		this.statement = statement;
 		this.tbn = tbn;
 	}
-
-	public QueryCallable() {
-		super();
-	}
-
-	public QueryCallable(PreparedStatement statement) {
-		super();
-		this.statement = statement;
-	}
-
 }

@@ -1262,7 +1262,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			if (getConnectionManager().isShowSql()) {
 				log.info(ps.toString());
 			}
-			qcs.add(new QueryCallable(ps.getOv()));
+			qcs.add(new QueryCallable(ps.getOv(), ps.getTbn()));
 		}
 		try {
 			return NEW_FIXED_THREAD_POOL.invokeAll(qcs);
