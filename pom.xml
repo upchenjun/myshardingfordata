@@ -3,10 +3,18 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.fd</groupId>
 	<artifactId>myshardingfordata</artifactId>
-	<version>1.2.27</version>
+	<version>1.2.28</version>
 	<packaging>jar</packaging>
 	<name>myshardingfordata</name>
-	<description>自动分库分表、读写分离，底层采用JDBC，完全开源免费使用，无需复杂配置，完全面向对象，所见即所得，无需写SQL语句，甚至无需了解SQL语句。</description>
+	<description>采用JDBC实现自动读写分离、单表水平切分，约定优于配置，完全面向对象，所见即所得，无需写SQL语句。</description>
+	<developers>
+		<developer>
+			<name>符冬</name>
+			<roles>
+				<role>Programmer</role>
+			</roles>
+		</developer>
+	</developers>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
@@ -25,6 +33,7 @@
 			<groupId>javax.persistence</groupId>
 			<artifactId>persistence-api</artifactId>
 			<version>1.0.2</version>
+			<scope>provided</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework</groupId>
@@ -62,12 +71,10 @@
 			<version>1.7.18</version>
 		</dependency>
 	</dependencies>
-
 	<build>
 		<plugins>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.5.1</version>
 				<configuration>
 					<source>1.8</source>
 					<target>1.8</target>
@@ -76,7 +83,6 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-source-plugin</artifactId>
-				<version>3.0.0</version>
 				<executions>
 					<execution>
 						<id>attach-sources</id>
@@ -90,7 +96,6 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-javadoc-plugin</artifactId>
-				<version>2.10.3</version>
 				<executions>
 					<execution>
 						<id>attach-javadocs</id>
