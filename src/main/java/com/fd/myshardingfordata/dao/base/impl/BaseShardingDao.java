@@ -34,8 +34,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 
 import javax.annotation.PostConstruct;
@@ -65,6 +64,7 @@ import com.fd.myshardingfordata.helper.PageData;
 import com.fd.myshardingfordata.helper.Param;
 import com.fd.myshardingfordata.helper.PropInfo;
 import com.fd.myshardingfordata.helper.QueryCallable;
+import com.fd.myshardingfordata.helper.QueryVo;
 import com.fd.myshardingfordata.helper.SortComparator;
 import com.fd.myshardingfordata.helper.SortInfo;
 import com.fd.myshardingfordata.helper.UpdateCallable;
@@ -93,15 +93,16 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				Set<PropInfo> pps = getPropInfos();
 				for (String tn : tbns) {
 					StringBuilder buf = new StringBuilder(KSentences.UPDATE.getValue());
-					buf.append(tn).append("   ").append("set  ");
+					buf.append(tn).append(KSentences.SET.getValue());
 					Iterator<Entry<String, Object>> ite = newValues.entrySet().iterator();
 					while (ite.hasNext()) {
 						Entry<String, Object> en = ite.next();
 						for (PropInfo p : pps) {
 							if (p.getPname().equals(en.getKey())) {
-								buf.append(p.getCname()).append("=").append(KSentences.POSITION_PLACEHOLDER.getValue());
+								buf.append(p.getCname()).append(KSentences.EQ.getValue())
+										.append(KSentences.POSITION_PLACEHOLDER.getValue());
 								if (ite.hasNext()) {
-									buf.append(",");
+									buf.append(KSentences.COMMA.getValue());
 								}
 							}
 						}
@@ -149,15 +150,16 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			StringBuffer sb = new StringBuffer(KSentences.SELECT.getValue());
 			for (PropInfo p : getPropInfos()) {
 				if (p.getPname().equals(property.trim())) {
-					sb.append(functionName).append("(").append(p.getCname()).append(")").append(KSentences.FROM);
+					sb.append(functionName).append(KSentences.LEFT_BRACKETS.getValue()).append(p.getCname())
+							.append(KSentences.RIGHT_BRACKETS.getValue()).append(KSentences.FROM);
 					break;
 				}
 			}
 			try {
 				List<Double> rzslist = new ArrayList<>();
-				List<Future<ResultSet>> rzts = invokeall(true, pms, sb.toString());
-				for (Future<ResultSet> f : rzts) {
-					ResultSet rs = f.get();
+				List<Future<QueryVo<ResultSet>>> rzts = invokeall(true, pms, sb.toString());
+				for (Future<QueryVo<ResultSet>> f : rzts) {
+					ResultSet rs = f.get().getOv();
 					while (rs.next()) {
 						Object o = rs.getObject(1);
 						if (o != null) {
@@ -201,9 +203,9 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		}
 		long ttc = 0;
 		try {
-			List<Future<ResultSet>> rzts = invokeall(isRead, pms, KSentences.SELECT_COUNT.getValue());
-			for (Future<ResultSet> f : rzts) {
-				ResultSet rs = f.get();
+			List<Future<QueryVo<ResultSet>>> rzts = invokeall(isRead, pms, KSentences.SELECT_COUNT.getValue());
+			for (Future<QueryVo<ResultSet>> f : rzts) {
+				ResultSet rs = f.get().getOv();
 				while (rs.next()) {
 					ttc += rs.getLong(1);
 				}
@@ -217,9 +219,10 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		return ttc;
 	}
 
-	private List<Future<ResultSet>> invokeall(boolean isRead, Set<Param> pms, String sqlselect) throws SQLException {
+	private List<Future<QueryVo<ResultSet>>> invokeall(boolean isRead, Set<Param> pms, String sqlselect)
+			throws SQLException {
 		Iterator<String> tbnsite = getTableNamesByParams(pms).iterator();
-		List<PreparedStatement> pss = new ArrayList<>();
+		List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
 		String whereSqlByParam = getWhereSqlByParam(pms);
 		while (tbnsite.hasNext()) {
 			String tn = tbnsite.next();
@@ -229,7 +232,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				log.info(sql);
 			}
 			setWhereSqlParamValue(pms, statement);
-			pss.add(statement);
+			pss.add(new QueryVo<PreparedStatement>(tn, statement));
 		}
 		return invokeQueryAll(pss);
 	}
@@ -367,7 +370,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				}
 			}
 			if (i < groupby.length - 1) {
-				sb.append(",");
+				sb.append(KSentences.COMMA.getValue());
 			}
 		}
 		return sb.toString();
@@ -417,7 +420,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					for (PropInfo p : getPropInfos()) {
 						if (p.getPname().equals(funen.getValue())) {
 							grpsql.append(funen.getKey().trim().toUpperCase()).append("(").append(p.getCname().trim())
-									.append("),");
+									.append(")").append(KSentences.COMMA.getValue());
 							break;
 						}
 					}
@@ -436,7 +439,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				}
 
 				if (i < groupby.length - 1) {
-					grpsql.append(",");
+					grpsql.append(KSentences.COMMA.getValue());
 				}
 			}
 
@@ -491,11 +494,11 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 						grpsql.append(KSentences.DESC.getValue());
 					}
 					if (obite.hasNext()) {
-						grpsql.append(",");
+						grpsql.append(KSentences.COMMA.getValue());
 					}
 
 				}
-				if (grpsql.lastIndexOf(",") == grpsql.length() - 1) {
+				if (grpsql.lastIndexOf(KSentences.COMMA.getValue()) == grpsql.length() - 1) {
 					grpsql.deleteCharAt(grpsql.length() - 1);
 				}
 
@@ -759,14 +762,14 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		while (clite.hasNext()) {
 			sb.append(clite.next().getCname());
 			if (clite.hasNext()) {
-				sb.append(",");
+				sb.append(KSentences.COMMA.getValue());
 			}
 		}
 		sb.append(")  VALUES(");
 		for (int i = 0; i < tbe.getValue().size(); i++) {
-			sb.append("?");
+			sb.append(KSentences.POSITION_PLACEHOLDER.getValue());
 			if (i < tbe.getValue().size() - 1) {
-				sb.append(",");
+				sb.append(KSentences.COMMA.getValue());
 			}
 		}
 		sb.append(")");
@@ -983,7 +986,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		}
 		try {
 			Set<String> tbns = getTableNamesByParams(params);
-			List<PreparedStatement> pss = new ArrayList<>();
+			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
 			for (String tn : tbns) {
@@ -993,7 +996,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					log.info(sql);
 				}
 				setWhereSqlParamValue(params, statement);
-				pss.add(statement);
+				pss.add(new QueryVo<PreparedStatement>(tn, statement));
 			}
 			return querylist(pss, strings);
 		} catch (Exception e) {
@@ -1083,7 +1086,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				return new ArrayList<>();
 			}
 			Set<String> tbns = getTableNamesByParams(params);
-			List<PreparedStatement> pss = new ArrayList<>();
+			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
 			if (tbns.size() == 1) {
@@ -1105,7 +1108,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 						log.info(sql);
 					}
 					setWhereSqlParamValue(params, statement);
-					pss.add(statement);
+					pss.add(new QueryVo<PreparedStatement>(tn, statement));
 				}
 
 				List<POJO> querylist = querylist(pss, strings);
@@ -1171,7 +1174,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 							sb.append(KSentences.DESC.getValue());
 						}
 						if (ite.hasNext()) {
-							sb.append(",");
+							sb.append(KSentences.COMMA.getValue());
 						}
 					}
 				}
@@ -1217,19 +1220,19 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		}
 		StringBuilder sb = new StringBuilder(KSentences.LIMIT.getValue());
 		sb.append((curPage - 1) * pageSize);
-		sb.append(",").append(pageSize);
+		sb.append(KSentences.COMMA.getValue()).append(pageSize);
 		return sb.toString();
 	}
 
-	private List<POJO> querylist(List<PreparedStatement> pss, String... strings)
+	private List<POJO> querylist(List<QueryVo<PreparedStatement>> pss, String... strings)
 			throws InterruptedException, ExecutionException {
 		if (pss != null && pss.size() > 0) {
-			List<Future<ResultSet>> rzs = invokeQueryAll(pss);
+			List<Future<QueryVo<ResultSet>>> rzs = invokeQueryAll(pss);
 			List<POJO> pos = new ArrayList<>();
-			for (Future<ResultSet> f : rzs) {
+			for (Future<QueryVo<ResultSet>> f : rzs) {
 
 				try {
-					pos.addAll(getRztObject(f.get(), strings));
+					pos.addAll(getRztObject(f.get().getOv(), strings));
 				} catch (Exception e) {
 					throw new IllegalStateException(e);
 				}
@@ -1253,13 +1256,13 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		return objs;
 	}
 
-	private List<Future<ResultSet>> invokeQueryAll(List<PreparedStatement> pss) {
+	private List<Future<QueryVo<ResultSet>>> invokeQueryAll(List<QueryVo<PreparedStatement>> pss) {
 		List<QueryCallable> qcs = new ArrayList<>();
-		for (PreparedStatement ps : pss) {
+		for (QueryVo<PreparedStatement> ps : pss) {
 			if (getConnectionManager().isShowSql()) {
 				log.info(ps.toString());
 			}
-			qcs.add(new QueryCallable(ps));
+			qcs.add(new QueryCallable(ps.getOv()));
 		}
 		try {
 			return NEW_FIXED_THREAD_POOL.invokeAll(qcs);
@@ -1418,7 +1421,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			for (int i = 0; i < pm.getInValue().size(); i++) {
 				sb.append(KSentences.POSITION_PLACEHOLDER);
 				if (i < pm.getInValue().size() - 1) {
-					sb.append(",");
+					sb.append(KSentences.COMMA.getValue());
 				}
 			}
 			sb.append(")");
@@ -1720,7 +1723,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					}
 				}
 				if (i < strings.length - 1) {
-					sb.append(",");
+					sb.append(KSentences.COMMA.getValue());
 				}
 			}
 		} else {
@@ -1835,7 +1838,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				PropInfo p = pisite.next();
 				getdbtype(ctbsb, p);
 				if (pisite.hasNext()) {
-					ctbsb.append(",");
+					ctbsb.append(KSentences.COMMA.getValue());
 				}
 			}
 			ctbsb.append(")");
@@ -1972,7 +1975,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 						PropInfo nextcn = ite.next();
 						getdbtype(sb, nextcn);
 						if (ite.hasNext()) {
-							sb.append(",");
+							sb.append(KSentences.COMMA.getValue());
 						}
 					}
 					if (sb.length() > 0) {
@@ -2028,7 +2031,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		if (p.getIndex().secondPropName() != null && !"".equals(p.getIndex().secondPropName().trim())) {
 			PropInfo propInfo = getPropInfo(p.getIndex().secondPropName());
 			if (propInfo != null) {
-				sbd.append(",").append(propInfo.getCname());
+				sbd.append(KSentences.COMMA.getValue()).append(propInfo.getCname());
 				if (propInfo.getType() == String.class) {
 					sbd.append("(").append(p.getIndex().length()).append(")");
 				}
@@ -2088,6 +2091,6 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	private static final String INDEX_SUBFIX = "_idx";
 	private static final String ALTER_TABLE_S_ADD_S = " ALTER  table  %s  add  (%s)";
 	private static final String ALTER_TABLE_S_ADD_INDEX_S = "ALTER  table  %s  add  %s  index  %s(%s)";
-	private static final ExecutorService NEW_FIXED_THREAD_POOL = Executors
-			.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 100);
+	private static final ForkJoinPool NEW_FIXED_THREAD_POOL = new ForkJoinPool(
+			Integer.min(Runtime.getRuntime().availableProcessors() * 30, 150));
 }
