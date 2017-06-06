@@ -109,7 +109,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					}
 					buf.append(getWhereSqlByParam(pms));
 					String sql = buf.toString();
-					PreparedStatement statement = getConnectionManager().getConnection().prepareStatement(sql);
+					PreparedStatement statement = getStatementBySql(false, sql);
 					if (getConnectionManager().isShowSql()) {
 						log.info(sql);
 					}
@@ -227,7 +227,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		while (tbnsite.hasNext()) {
 			String tn = tbnsite.next();
 			String sql = sqlselect + tn + whereSqlByParam;
-			PreparedStatement statement = getConnectionManager().getConnection(isRead).prepareStatement(sql);
+			PreparedStatement statement = getStatementBySql(isRead, sql);
 			if (getConnectionManager().isShowSql()) {
 				log.info(sql);
 			}
@@ -335,7 +335,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			sqlsb.append(")  gdtc  ").append(KSentences.GROUPBY.getValue()).append(groupbysql(groupby))
 					.append(havingSql).append(")  ccfd ");
 			String sql = sqlsb.toString();
-			PreparedStatement statement = getConnectionManager().getConnection(true).prepareStatement(sql);
+			PreparedStatement statement = getStatementBySql(true, sql);
 			if (getConnectionManager().isShowSql()) {
 				log.info(sql);
 			}
@@ -504,8 +504,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 			}
 			String selectPagingSql = getSingleTableSelectPagingSql(grpsql.toString(), curPage, pageSize);
-			PreparedStatement statement = getConnectionManager().getConnection(readOnly)
-					.prepareStatement(selectPagingSql);
+			PreparedStatement statement = getStatementBySql(readOnly, selectPagingSql);
 			if (getConnectionManager().isShowSql()) {
 				log.info(selectPagingSql);
 			}
@@ -521,6 +520,13 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		} finally {
 			getConnectionManager().closeConnection();
 		}
+	}
+
+	private PreparedStatement getStatementBySql(boolean readOnly, String selectPagingSql) throws SQLException {
+		PreparedStatement statement = getConnectionManager().getConnection(readOnly).prepareStatement(selectPagingSql);
+		// 300秒超时
+		statement.setQueryTimeout(300);
+		return statement;
 	}
 
 	private String getHavingSql(Set<Param> hvcs) {
@@ -653,7 +659,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		StringBuilder sb = getSelectSql(tableName, strings);
 		sb.append(getWhereSqlByParam(pms));
 		String sql = sb.toString();
-		PreparedStatement prepare = getConnectionManager().getConnection(isRead).prepareStatement(sql);
+		PreparedStatement prepare = getStatementBySql(isRead, sql);
 		if (getConnectionManager().isShowSql()) {
 			log.info(sql);
 		}
@@ -932,7 +938,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			String whereSqlByParam = getWhereSqlByParam(pms);
 			for (String tn : tbns) {
 				String sql = KSentences.DELETE_FROM.getValue() + tn + whereSqlByParam;
-				PreparedStatement statement = getConnectionManager().getConnection().prepareStatement(sql);
+				PreparedStatement statement = getStatementBySql(false, sql);
 				if (getConnectionManager().isShowSql()) {
 					log.info(sql);
 				}
@@ -991,7 +997,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			String whereSqlByParam = getWhereSqlByParam(params);
 			for (String tn : tbns) {
 				String sql = selectpre + tn + whereSqlByParam;
-				PreparedStatement statement = getConnectionManager().getConnection(isRead).prepareStatement(sql);
+				PreparedStatement statement = getStatementBySql(isRead, sql);
 				if (getConnectionManager().isShowSql()) {
 					log.info(sql);
 				}
@@ -1093,7 +1099,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				String sql = getSingleTableSelectPagingSql(
 						selectpre + tbns.iterator().next() + whereSqlByParam + getOrderBySql(orderbys), curPage,
 						pageSize);
-				PreparedStatement statement = getConnectionManager().getConnection(isRead).prepareStatement(sql);
+				PreparedStatement statement = getStatementBySql(isRead, sql);
 				if (getConnectionManager().isShowSql()) {
 					log.info(sql);
 				}
@@ -1103,7 +1109,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				for (String tn : tbns) {
 					String sql = getSelectPagingSql(selectpre + tn + whereSqlByParam + getOrderBySql(orderbys), curPage,
 							pageSize);
-					PreparedStatement statement = getConnectionManager().getConnection(isRead).prepareStatement(sql);
+					PreparedStatement statement = getStatementBySql(isRead, sql);
 					if (getConnectionManager().isShowSql()) {
 						log.info(sql);
 					}
