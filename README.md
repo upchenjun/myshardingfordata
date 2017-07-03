@@ -3,11 +3,19 @@
 
 
 启用事务支持
+
+
 一、配置类上面加上
+
 @EnableAspectJAutoProxy(exposeProxy = true, proxyTargetClass = true)
 
 二、配置类中配置
+
   @Bean
 	public TransManager transManager() {
 		return new TransManager(connectionManager());
 	}
+	
+	
+	
+	spring boot  默认开启spring.aop.auto=true，无需加@EnableAspectJAutoProxy注解
