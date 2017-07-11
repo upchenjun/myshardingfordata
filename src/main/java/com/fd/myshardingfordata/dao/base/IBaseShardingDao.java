@@ -297,4 +297,48 @@ public interface IBaseShardingDao<POJO> {
 			String... cls);
 
 	void refreshCurrentTables();
+
+	/**
+	 * 不排序分页查询集合数据 性能最好
+	 * 
+	 * @param pms
+	 * @param curPage
+	 * @param pageSize
+	 * @param cls
+	 * @return
+	 */
+	List<POJO> getListFromMaster(Set<Param> pms, int curPage, int pageSize, String... cls);
+
+	/**
+	 * 不排序分页查询集合数据 性能最好
+	 * 
+	 * @param pms
+	 * @param curPage
+	 * @param pageSize
+	 * @param cls
+	 * @return
+	 */
+	List<POJO> getList(Set<Param> pms, int curPage, int pageSize, String... cls);
+
+	/**
+	 * 分页不排序 性能高，速度快
+	 * 
+	 * @param pms
+	 * @param curPage
+	 * @param pageSize
+	 * @param cls
+	 * @return
+	 */
+	PageData<POJO> getPageInfoFromMaster(Set<Param> pms, int curPage, int pageSize, String... cls);
+
+	/**
+	 * 分页不排序 性能高，速度快
+	 * 
+	 * @param pms
+	 * @param curPage
+	 * @param pageSize
+	 * @param cls
+	 * @return
+	 */
+	PageData<POJO> getPageInfo(Set<Param> pms, int curPage, int pageSize, String... cls);
 }

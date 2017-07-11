@@ -201,22 +201,17 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		if (getCurrentTables().size() < 1) {
 			return 0L;
 		}
-		long ttc = 0;
-		try {
-			List<Future<QueryVo<ResultSet>>> rzts = invokeall(isRead, pms, KSentences.SELECT_COUNT.getValue());
-			for (Future<QueryVo<ResultSet>> f : rzts) {
-				ResultSet rs = f.get().getOv();
-				while (rs.next()) {
-					ttc += rs.getLong(1);
-				}
-			}
-		} catch (Exception e) {
-			throw new IllegalStateException(e);
-		} finally {
-			getConnectionManager().closeConnection();
-		}
+		List<QueryVo<Long>> qvs = getCountPerTable(isRead, pms);
+		return getQvcSum(qvs);
 
-		return ttc;
+	}
+
+	private Long getQvcSum(List<QueryVo<Long>> qvs) {
+		if (qvs != null && qvs.size() > 0) {
+			return qvs.stream().filter(o -> o.getOv() != null).mapToLong(QueryVo::getOv).sum();
+		} else {
+			return 0L;
+		}
 	}
 
 	private List<Future<QueryVo<ResultSet>>> invokeall(boolean isRead, Set<Param> pms, String sqlselect)
@@ -250,7 +245,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	@Override
 	public List<POJO> getListAndOrderBy(LinkedHashSet<ObData> orderbys, Set<Param> pms, String... cls) {
 		if (getCurrentTables().size() < 1) {
-			return new ArrayList<>();
+			return new ArrayList<>(0);
 		}
 		return getRztPos(true, 1, Integer.MAX_VALUE / getCurrentTables().size(), orderbys, pms, cls);
 	}
@@ -265,6 +260,26 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	public List<POJO> getListFromMaster(int curPage, int pageSize, LinkedHashSet<ObData> orderbys, Set<Param> pms,
 			String... cls) {
 		return getRztPos(false, curPage, pageSize, orderbys, pms, cls);
+	}
+
+	@Override
+	public PageData<POJO> getPageInfoFromMaster(Set<Param> pms, int curPage, int pageSize, String... cls) {
+		return getListFromNotSorted(false, curPage, pageSize, pms, cls);
+	}
+
+	@Override
+	public PageData<POJO> getPageInfo(Set<Param> pms, int curPage, int pageSize, String... cls) {
+		return getListFromNotSorted(true, curPage, pageSize, pms, cls);
+	}
+
+	@Override
+	public List<POJO> getListFromMaster(Set<Param> pms, int curPage, int pageSize, String... cls) {
+		return getListFromNotSorted(false, curPage, pageSize, pms, cls).getDataList();
+	}
+
+	@Override
+	public List<POJO> getList(Set<Param> pms, int curPage, int pageSize, String... cls) {
+		return getListFromNotSorted(true, curPage, pageSize, pms, cls).getDataList();
 	}
 
 	@Override
@@ -525,7 +540,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	private PreparedStatement getStatementBySql(boolean readOnly, String selectPagingSql) throws SQLException {
 		PreparedStatement statement = getConnectionManager().getConnection(readOnly).prepareStatement(selectPagingSql);
 		// 300秒超时
-		statement.setQueryTimeout(300);
+		statement.setQueryTimeout(360);
 		return statement;
 	}
 
@@ -560,7 +575,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	@Override
 	public List<POJO> getListAndOrderBy(LinkedHashSet<ObData> orderbys, String... cls) {
 		if (getCurrentTables().size() < 1) {
-			return new ArrayList<>();
+			return new ArrayList<>(0);
 		}
 		return getRztPos(true, 1, Integer.MAX_VALUE / getCurrentTables().size(), orderbys, null, cls);
 	}
@@ -576,7 +591,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			}
 
 		}
-		return new ArrayList<>();
+		return new ArrayList<>(0);
 	}
 
 	@Override
@@ -590,7 +605,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			}
 		}
 
-		return new ArrayList<>();
+		return new ArrayList<>(0);
 	}
 
 	// 获取主键名称
@@ -654,7 +669,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			PropInfo fd, ColumnRule cr, Set<Param> pms, String... strings) throws SQLException {
 		String tableName = getTableName(getTableMaxIdx(id, fd.getType(), cr), tbimp.getKey());
 		if (!isContainsTable(tableName)) {
-			return new ArrayList<>();
+			return new ArrayList<>(0);
 		}
 		StringBuilder sb = getSelectSql(tableName, strings);
 		sb.append(getWhereSqlByParam(pms));
@@ -811,7 +826,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					throw new IllegalArgumentException(String.format("%s切分字段数据不能为空！！", fd.getName()));
 				}
 				long max = getTableMaxIdx(fd.get(pojo), fd.getType(), crn);
-				if (max >= maxTableCount) {
+				if (getCurrentTables().size() >= maxTableCount) {
 					throw new IllegalStateException(String.format("超出了表拆分最大数量，最多只能拆分%s个表", maxTableCount));
 				}
 				String ctbname = getTableName(max, name);
@@ -988,23 +1003,27 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 	private List<POJO> getRztPos(boolean isRead, Set<Param> params, String... strings) {
 		if (getCurrentTables().size() < 1) {
-			return new ArrayList<>();
+			return new ArrayList<>(0);
 		}
 		try {
-			Set<String> tbns = getTableNamesByParams(params);
 			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
-			for (String tn : tbns) {
-				String sql = selectpre + tn + whereSqlByParam;
-				PreparedStatement statement = getStatementBySql(isRead, sql);
-				if (getConnectionManager().isShowSql()) {
-					log.info(sql);
+			Set<String> tbns = getTableNamesByParams(params);
+			if (tbns.size() == 1) {
+				return getSingleObject(isRead, params, selectpre + tbns.iterator().next() + whereSqlByParam, strings);
+			} else {
+				for (String tn : tbns) {
+					String sql = selectpre + tn + whereSqlByParam;
+					PreparedStatement statement = getStatementBySql(isRead, sql);
+					if (getConnectionManager().isShowSql()) {
+						log.info(sql);
+					}
+					setWhereSqlParamValue(params, statement);
+					pss.add(new QueryVo<PreparedStatement>(tn, statement));
 				}
-				setWhereSqlParamValue(params, statement);
-				pss.add(new QueryVo<PreparedStatement>(tn, statement));
+				return querylist(pss, strings);
 			}
-			return querylist(pss, strings);
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new IllegalStateException(e);
@@ -1069,13 +1088,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			if (dpname.equalsIgnoreCase("MySQL")) {
 				return sql + getSingleTablePagingSql(curPage, pageSize);
 			} else if (dpname.equalsIgnoreCase("Oracle")) {
-				StringBuilder sb = new StringBuilder(
-						"select   *      from        ( select  row_.*,   rownum  rownum_      from (");
-				sb.append(sql);
-				sb.append(")  row_  where    rownum <=");
-				sb.append(curPage * pageSize);
-				sb.append(" )   where  rownum_ > ").append((curPage - 1) * pageSize);
-				return sb.toString();
+				return oraclepageselect(sql, curPage, pageSize);
 			}
 			throw new IllegalStateException(String.format("当前查询分页路由不支持：%s数据库系统", dpname));
 		} catch (SQLException e) {
@@ -1085,57 +1098,171 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 	}
 
+	private String getSingleTableSelectPagingSqlByStartIndex(int start, String sql, int pageSize) {
+
+		try {
+			String dpname = getConnectionManager().getConnection(true).getMetaData().getDatabaseProductName();
+			if (dpname.equalsIgnoreCase("MySQL")) {
+				return sql + getSinglePagingSql(start, pageSize);
+			} else if (dpname.equalsIgnoreCase("Oracle")) {
+				return getoracleSinglepagingSelectsql(start, sql, pageSize);
+			}
+			throw new IllegalStateException(String.format("当前查询分页路由不支持：%s数据库系统", dpname));
+		} catch (SQLException e) {
+			e.printStackTrace();
+			throw new IllegalStateException("无法获取数据库名称");
+		}
+
+	}
+
+	/**
+	 * Oracle
+	 * 
+	 * @param sql
+	 * @param curPage
+	 *            当前页
+	 * @param pageSize
+	 *            每页显示多少条记录
+	 * @return
+	 */
+	private String oraclepageselect(String sql, int curPage, int pageSize) {
+		StringBuilder sb = new StringBuilder(
+				"select   *      from        ( select  row_.*,   rownum  rownum_      from (");
+		sb.append(sql);
+		sb.append(")  row_  where    rownum <=");
+		sb.append(curPage * pageSize);
+		sb.append(" )   where  rownum_ > ").append((curPage - 1) * pageSize);
+		return sb.toString();
+	}
+
+	/**
+	 * Oracle
+	 * 
+	 * @param start
+	 *            开始位置
+	 * @param sql
+	 * @param pageSize
+	 *            获取多少条记录
+	 * @return
+	 */
+	private String getoracleSinglepagingSelectsql(int start, String sql, int pageSize) {
+
+		StringBuilder sb = new StringBuilder(
+				"select   *      from        ( select  row_.*,   rownum  rownum_      from (");
+		sb.append(sql);
+		sb.append(")  row_  where    rownum <=");
+		sb.append(start + pageSize);
+		sb.append(" )   where  rownum_ > ").append(start);
+		return sb.toString();
+
+	}
+
 	private List<POJO> getRztPos(Boolean isRead, int curPage, int pageSize, LinkedHashSet<ObData> orderbys,
 			Set<Param> params, String... strings) {
-		try {
-			if (curPage < 1 || pageSize < 1 || getCurrentTables().size() < 1) {
-				return new ArrayList<>();
+		if (curPage < 1 || pageSize < 1 || getCurrentTables().size() < 1) {
+			return new ArrayList<>(0);
+		}
+		Set<String> tbns = getTableNamesByParams(params);
+		if (tbns.size() > 1 && (orderbys == null || orderbys.isEmpty())) {
+			return getListFromNotSorted(isRead, curPage, pageSize, params, strings).getDataList();
+		} else {
+			try {
+				String selectpre = getPreSelectSql(strings);
+				String whereSqlByParam = getWhereSqlByParam(params);
+				if (tbns.size() == 1) {
+					String sql = getSingleTableSelectPagingSql(
+							selectpre + tbns.iterator().next() + whereSqlByParam + getOrderBySql(orderbys), curPage,
+							pageSize);
+					return getSingleObject(isRead, params, sql, strings);
+				} else {
+					List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
+					for (String tn : tbns) {
+						String sql = getSelectPagingSql(selectpre + tn + whereSqlByParam + getOrderBySql(orderbys),
+								curPage, pageSize);
+						PreparedStatement statement = getStatementBySql(isRead, sql);
+						if (getConnectionManager().isShowSql()) {
+							log.info(sql);
+						}
+						setWhereSqlParamValue(params, statement);
+						pss.add(new QueryVo<PreparedStatement>(tn, statement));
+					}
+
+					List<POJO> querylist = querylist(pss, strings);
+					if (querylist.size() > 1) {
+						return getOrderbyPagelist(curPage, pageSize, querylist, addsortinfo(orderbys, strings));
+					} else {
+						return querylist;
+					}
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+				throw new IllegalStateException(e);
+			} finally {
+				getConnectionManager().closeConnection();
 			}
-			Set<String> tbns = getTableNamesByParams(params);
-			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
+		}
+
+	}
+
+	private List<POJO> getSingleObject(Boolean isRead, Set<Param> params, String sql, String... strings)
+			throws SQLException {
+		PreparedStatement statement = getStatementBySql(isRead, sql);
+		if (getConnectionManager().isShowSql()) {
+			log.info(sql);
+		}
+		setWhereSqlParamValue(params, statement);
+		return getRztObject(statement.executeQuery(), strings);
+	}
+
+	/**
+	 * 不排序分页列表
+	 * 
+	 * @param isRead
+	 * @param curPage
+	 * @param pageSize
+	 * @param params
+	 * @param selectpre
+	 * @param whereSqlByParam
+	 * @param strings
+	 * @return
+	 * @throws SQLException
+	 * @throws InterruptedException
+	 * @throws ExecutionException
+	 */
+	private PageData<POJO> getListFromNotSorted(Boolean isRead, int curPage, int pageSize, Set<Param> params,
+			String... strings) {
+		try {
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
-			if (tbns.size() == 1) {
-				String sql = getSingleTableSelectPagingSql(
-						selectpre + tbns.iterator().next() + whereSqlByParam + getOrderBySql(orderbys), curPage,
-						pageSize);
-				PreparedStatement statement = getStatementBySql(isRead, sql);
-				if (getConnectionManager().isShowSql()) {
-					log.info(sql);
-				}
-				setWhereSqlParamValue(params, statement);
-				return getRztObject(statement.executeQuery(), strings);
-			} else {
-				for (String tn : tbns) {
-					String sql = getSelectPagingSql(selectpre + tn + whereSqlByParam + getOrderBySql(orderbys), curPage,
-							pageSize);
-					PreparedStatement statement = getStatementBySql(isRead, sql);
-					if (getConnectionManager().isShowSql()) {
-						log.info(sql);
-					}
-					setWhereSqlParamValue(params, statement);
-					pss.add(new QueryVo<PreparedStatement>(tn, statement));
-				}
-
-				List<POJO> querylist = querylist(pss, strings);
-				if (querylist.size() > 1) {
-					LinkedHashSet<SortInfo> sts = new LinkedHashSet<>();
-					if (orderbys != null && orderbys.size() > 0) {
-						List<String> asList = Arrays.asList(strings);
-						for (ObData ob : orderbys) {
-							if ((strings != null && strings.length > 0) && asList.contains(ob.getPropertyName())) {
-								sts.add(new SortInfo(ob.getPropertyName(), ob.getIsDesc()));
-							} else {
-								sts.add(new SortInfo(ob.getPropertyName(), ob.getIsDesc()));
-							}
+			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
+			List<QueryVo<Long>> qvs = getCountPerTable(isRead, params);
+			// 开始位置
+			int start = getPageStartIndex(curPage, pageSize);
+			long csum = 0;
+			int rdsum = 0;
+			for (QueryVo<Long> q : qvs) {
+				csum += q.getOv();
+				if (rdsum < pageSize) {
+					if (csum > start) {
+						// 当前表获取多少条数据
+						long cqsz = csum - start;
+						int initSize = Long.valueOf(Math.min(cqsz, pageSize)).intValue();
+						rdsum += initSize;
+						String sql = getSingleTableSelectPagingSqlByStartIndex(q.getOv().intValue() - initSize,
+								selectpre + q.getTbn() + whereSqlByParam, initSize);
+						PreparedStatement statement = getStatementBySql(isRead, sql);
+						if (getConnectionManager().isShowSql()) {
+							log.info(sql);
 						}
-
+						setWhereSqlParamValue(params, statement);
+						pss.add(new QueryVo<PreparedStatement>(q.getTbn(), statement));
 					}
-					return getOrderbyPagelist(curPage, pageSize, querylist, sts);
 				} else {
-					return querylist;
+					break;
 				}
 			}
+			return new PageData<>(curPage, pageSize, qvs.stream().mapToLong(QueryVo::getOv).sum(),
+					querylist(pss, strings));
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new IllegalStateException(e);
@@ -1144,17 +1271,75 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		}
 	}
 
+	/**
+	 * 开始位置
+	 * 
+	 * @param curPage
+	 * @param pageSize
+	 * @return
+	 */
+	private int getPageStartIndex(int curPage, int pageSize) {
+		int start = (curPage - 1) * pageSize;
+		return start;
+	}
+
+	private LinkedHashSet<SortInfo> addsortinfo(LinkedHashSet<ObData> orderbys, String... strings) {
+		LinkedHashSet<SortInfo> sts = new LinkedHashSet<>();
+		if (orderbys != null && orderbys.size() > 0) {
+			List<String> asList = Arrays.asList(strings);
+			for (ObData ob : orderbys) {
+				if ((strings != null && strings.length > 0) && asList.contains(ob.getPropertyName())) {
+					sts.add(new SortInfo(ob.getPropertyName(), ob.getIsDesc()));
+				} else {
+					sts.add(new SortInfo(ob.getPropertyName(), ob.getIsDesc()));
+				}
+			}
+
+		}
+		return sts;
+	}
+
+	/// 获取每个表的记录数
+	private List<QueryVo<Long>> getCountPerTable(Boolean isRead, Set<Param> params) {
+		List<QueryVo<Long>> qvs = new ArrayList<>();
+		try {
+			List<Future<QueryVo<ResultSet>>> rzts = invokeall(isRead, params, KSentences.SELECT_COUNT.getValue());
+			for (Future<QueryVo<ResultSet>> f : rzts) {
+				ResultSet rs = f.get().getOv();
+				if (rs.next()) {
+					long cc = rs.getLong(1);
+					if (cc > 0) {
+						qvs.add(new QueryVo<Long>(f.get().getTbn(), cc));
+					}
+				}
+			}
+			if (qvs.size() > 1) {
+				qvs.sort(new Comparator<QueryVo<Long>>() {
+					@Override
+					public int compare(QueryVo<Long> o1, QueryVo<Long> o2) {
+						return o2.getTbn().compareTo(o1.getTbn());
+					}
+				});
+			}
+		} catch (Exception e) {
+			throw new IllegalStateException(e);
+		} finally {
+			getConnectionManager().closeConnection();
+		}
+		return qvs;
+	}
+
 	private <T> List<T> getOrderbyPagelist(int curPage, int pageSize, List<T> querylist, LinkedHashSet<SortInfo> sts) {
 		if (sts != null && sts.size() > 0) {
 			querylist.sort(new SortComparator<>(sts));
 		}
-		int fromIndex = (curPage - 1) * pageSize;
+		int fromIndex = getPageStartIndex(curPage, pageSize);
 		int toIndex = fromIndex + pageSize;
 		if (toIndex > querylist.size()) {
 			toIndex = querylist.size();
 		}
 		if (fromIndex >= toIndex) {
-			return new ArrayList<>();
+			return new ArrayList<>(0);
 		}
 		return querylist.subList(fromIndex, toIndex);
 	}
@@ -1198,13 +1383,9 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	 * @return
 	 */
 	private String getPagingSql(int curPage, int pageSize) {
-		if (curPage < 1) {
-			curPage = 1;
+		if (curPage < 1 || pageSize < 1) {
+			throw new IllegalArgumentException("当前页和页大小不能小于0");
 		}
-		if (pageSize < 1) {
-			pageSize = 1;
-		}
-
 		StringBuilder sb = new StringBuilder(KSentences.LIMIT.getValue());
 		sb.append(curPage * pageSize);
 		return sb.toString();
@@ -1218,14 +1399,30 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	 * @return
 	 */
 	private String getSingleTablePagingSql(int curPage, int pageSize) {
-		if (curPage < 1) {
-			curPage = 1;
-		}
-		if (pageSize < 1) {
-			pageSize = 1;
+		if (curPage < 1 || pageSize < 1) {
+			throw new IllegalArgumentException("当前页和页大小不能小于0");
 		}
 		StringBuilder sb = new StringBuilder(KSentences.LIMIT.getValue());
 		sb.append((curPage - 1) * pageSize);
+		sb.append(KSentences.COMMA.getValue()).append(pageSize);
+		return sb.toString();
+	}
+
+	/**
+	 * 分页
+	 * 
+	 * @param start
+	 *            开始位置
+	 * @param pageSize
+	 *            获取多少条数据
+	 * @return
+	 */
+	private String getSinglePagingSql(int start, int pageSize) {
+		if (start < 1 || pageSize < 1) {
+			throw new IllegalArgumentException("当开始位置和页大小不能小于0");
+		}
+		StringBuilder sb = new StringBuilder(KSentences.LIMIT.getValue());
+		sb.append(start);
 		sb.append(KSentences.COMMA.getValue()).append(pageSize);
 		return sb.toString();
 	}
@@ -1246,7 +1443,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			return pos;
 
 		}
-		return new ArrayList<>();
+		return new ArrayList<>(0);
 	}
 
 	private List<Object[]> getObjectList(ResultSet resultSet) throws SQLException {
@@ -1771,7 +1968,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	/**
 	 * 单表表拆分最大数量
 	 */
-	private volatile int maxTableCount = 11024;
+	private volatile int maxTableCount = 1024;
 	/**
 	 * 实体类对应的当前已经分表的表名集合
 	 */
