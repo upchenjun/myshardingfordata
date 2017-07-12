@@ -223,9 +223,6 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			String tn = tbnsite.next();
 			String sql = sqlselect + tn + whereSqlByParam;
 			PreparedStatement statement = getStatementBySql(isRead, sql);
-			if (getConnectionManager().isShowSql()) {
-				log.info(sql);
-			}
 			setWhereSqlParamValue(pms, statement);
 			pss.add(new QueryVo<PreparedStatement>(tn, statement));
 		}
@@ -771,7 +768,6 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	}
 
 	protected int persist(POJO pojo) throws IllegalAccessException, SQLException {
-		int rzc;
 		Field[] fds = clazz.getDeclaredFields();
 		Entry<String, LinkedHashSet<PropInfo>> tbe = ConnectionManager.getTbinfo(clazz).entrySet().iterator().next();
 		Field idkey = checkPrimarykey(fds, tbe);
@@ -798,13 +794,13 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		PreparedStatement statement = getConnectionManager().getConnection().prepareStatement(sb.toString(),
 				Statement.RETURN_GENERATED_KEYS);
 		setParamVal(pojo, fds, tbe.getValue(), statement);
-		rzc = statement.executeUpdate();
+		int cc = statement.executeUpdate();
 		ResultSet rs = statement.getGeneratedKeys();
 		if (rs.next()) {
 			idkey.setAccessible(true);
 			idkey.set(pojo, rs.getLong(1));
 		}
-		return rzc;
+		return cc;
 	}
 
 	/**
@@ -1146,7 +1142,9 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	 * @return
 	 */
 	private String getoracleSinglepagingSelectsql(int start, String sql, int pageSize) {
-
+		if (start < 0 || pageSize < 1) {
+			throw new IllegalArgumentException("当开始位置不能小于0或者页大小不能小于1");
+		}
 		StringBuilder sb = new StringBuilder(
 				"select   *      from        ( select  row_.*,   rownum  rownum_      from (");
 		sb.append(sql);
@@ -1231,6 +1229,9 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	 */
 	private PageData<POJO> getListFromNotSorted(Boolean isRead, int curPage, int pageSize, Set<Param> params,
 			String... strings) {
+		if (getConnectionManager().isShowSql()) {
+			log.info("begin........................................");
+		}
 		try {
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
@@ -1238,17 +1239,29 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			List<QueryVo<Long>> qvs = getCountPerTable(isRead, params);
 			// 开始位置
 			int start = getPageStartIndex(curPage, pageSize);
-			long csum = 0;
+			// 当前所有查到的最大位置
+			int csum = 0;
+			// 当前已经可以查到的数据量
 			int rdsum = 0;
 			for (QueryVo<Long> q : qvs) {
 				csum += q.getOv();
 				if (rdsum < pageSize) {
 					if (csum > start) {
-						// 当前表获取多少条数据
-						long cqsz = csum - start;
-						int initSize = Long.valueOf(Math.min(cqsz, pageSize)).intValue();
+						// 当前 表开始位置
+						int startindex = 0;
+						// 还剩多少数据需要查询
+						int left = pageSize - rdsum;
+						int initSize = q.getOv().intValue() > left ? left : q.getOv().intValue();
+						if (start > 0) {
+							// 当前表查询剩余多少记录
+							int step = csum - start;
+							if (step < q.getOv().intValue()) {
+								startindex = q.getOv().intValue() - step;
+								initSize = step;
+							}
+						}
 						rdsum += initSize;
-						String sql = getSingleTableSelectPagingSqlByStartIndex(q.getOv().intValue() - initSize,
+						String sql = getSingleTableSelectPagingSqlByStartIndex(startindex,
 								selectpre + q.getTbn() + whereSqlByParam, initSize);
 						PreparedStatement statement = getStatementBySql(isRead, sql);
 						if (getConnectionManager().isShowSql()) {
@@ -1268,7 +1281,11 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			throw new IllegalStateException(e);
 		} finally {
 			getConnectionManager().closeConnection();
+			if (getConnectionManager().isShowSql()) {
+				log.info("........................................end");
+			}
 		}
+
 	}
 
 	/**
@@ -1409,7 +1426,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	}
 
 	/**
-	 * 分页
+	 * 不排序分页查询
 	 * 
 	 * @param start
 	 *            开始位置
@@ -1418,8 +1435,8 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	 * @return
 	 */
 	private String getSinglePagingSql(int start, int pageSize) {
-		if (start < 1 || pageSize < 1) {
-			throw new IllegalArgumentException("当开始位置和页大小不能小于0");
+		if (start < 0 || pageSize < 1) {
+			throw new IllegalArgumentException("当开始位置不能小于0或者页大小不能小于1");
 		}
 		StringBuilder sb = new StringBuilder(KSentences.LIMIT.getValue());
 		sb.append(start);
@@ -1462,10 +1479,10 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	private List<Future<QueryVo<ResultSet>>> invokeQueryAll(List<QueryVo<PreparedStatement>> pss) {
 		List<QueryCallable> qcs = new ArrayList<>();
 		for (QueryVo<PreparedStatement> ps : pss) {
-			if (getConnectionManager().isShowSql()) {
-				log.info(ps.toString());
-			}
 			qcs.add(new QueryCallable(ps.getOv(), ps.getTbn()));
+			if (getConnectionManager().isShowSql()) {
+				log.error(ps.getOv().toString());
+			}
 		}
 		try {
 			return NEW_FIXED_THREAD_POOL.invokeAll(qcs);
