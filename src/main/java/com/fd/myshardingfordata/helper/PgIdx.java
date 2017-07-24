@@ -1,6 +1,5 @@
 package com.fd.myshardingfordata.helper;
 
-
 import java.io.Serializable;
 
 /**
@@ -34,6 +33,10 @@ public class PgIdx implements Serializable {
 		return endIndex;
 	}
 
+	public PgIdx() {
+		super();
+	}
+
 	public void setEndIndex(long endIndex) {
 		this.endIndex = endIndex;
 	}
@@ -49,10 +52,8 @@ public class PgIdx implements Serializable {
 	 *            总页数
 	 * @return
 	 */
-	public static PgIdx getPageIndex(long indexCount, int curPage,
-			long totalPage) {
-		long startpage = curPage
-				- (indexCount % 2 == 0 ? indexCount / 2 - 1 : indexCount / 2);
+	public static PgIdx getPageIndex(long indexCount, int curPage, long totalPage) {
+		long startpage = curPage - (indexCount % 2 == 0 ? indexCount / 2 - 1 : indexCount / 2);
 
 		long endpage = curPage + indexCount / 2;
 		if (startpage < 1) {

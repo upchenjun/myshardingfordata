@@ -84,6 +84,10 @@ public class ObData {
 		return true;
 	}
 
+	public ObData() {
+		super();
+	}
+
 	public ObData(String propertyName, String funName, Boolean isDesc) {
 		super();
 		this.propertyName = propertyName;
