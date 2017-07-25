@@ -997,27 +997,54 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		}
 	}
 
+	@Override
+	public List<Object> getVlList(String property, Set<Param> params) {
+		return getRztPos(property, params, true);
+	}
+
+	@Override
+	public List<Object> getVlListFromMaster(String property, Set<Param> params) {
+		return getRztPos(property, params, false);
+	}
+
+	// 单个字段值列表
+	private List<Object> getRztPos(String property, Set<Param> params, boolean isRead) {
+
+		if (getCurrentTables().size() < 1) {
+			return new ArrayList<>(0);
+		}
+		try {
+			String selectpre = getPreSelectSql(property);
+			String whereSqlByParam = getWhereSqlByParam(params);
+			Set<String> tbns = getTableNamesByParams(params);
+			if (tbns.size() == 1) {
+				return getSingleObject(isRead, selectpre + tbns.iterator().next() + whereSqlByParam, params);
+			} else {
+				List<QueryVo<PreparedStatement>> pss = getqvs(isRead, params, selectpre, whereSqlByParam, tbns);
+				return querylist(pss);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new IllegalStateException(e);
+		} finally {
+			getConnectionManager().closeConnection();
+		}
+
+	}
+
+	/// 实体对象列表
 	private List<POJO> getRztPos(boolean isRead, Set<Param> params, String... strings) {
 		if (getCurrentTables().size() < 1) {
 			return new ArrayList<>(0);
 		}
 		try {
-			List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
 			String selectpre = getPreSelectSql(strings);
 			String whereSqlByParam = getWhereSqlByParam(params);
 			Set<String> tbns = getTableNamesByParams(params);
 			if (tbns.size() == 1) {
 				return getSingleObject(isRead, params, selectpre + tbns.iterator().next() + whereSqlByParam, strings);
 			} else {
-				for (String tn : tbns) {
-					String sql = selectpre + tn + whereSqlByParam;
-					PreparedStatement statement = getStatementBySql(isRead, sql);
-					if (getConnectionManager().isShowSql()) {
-						log.info(sql);
-					}
-					setWhereSqlParamValue(params, statement);
-					pss.add(new QueryVo<PreparedStatement>(tn, statement));
-				}
+				List<QueryVo<PreparedStatement>> pss = getqvs(isRead, params, selectpre, whereSqlByParam, tbns);
 				return querylist(pss, strings);
 			}
 		} catch (Exception e) {
@@ -1026,6 +1053,21 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		} finally {
 			getConnectionManager().closeConnection();
 		}
+	}
+
+	private List<QueryVo<PreparedStatement>> getqvs(boolean isRead, Set<Param> params, String selectpre,
+			String whereSqlByParam, Set<String> tbns) throws SQLException {
+		List<QueryVo<PreparedStatement>> pss = new ArrayList<>();
+		for (String tn : tbns) {
+			String sql = selectpre + tn + whereSqlByParam;
+			PreparedStatement statement = getStatementBySql(isRead, sql);
+			if (getConnectionManager().isShowSql()) {
+				log.info(sql);
+			}
+			setWhereSqlParamValue(params, statement);
+			pss.add(new QueryVo<PreparedStatement>(tn, statement));
+		}
+		return pss;
 	}
 
 	@Override
@@ -1200,6 +1242,15 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			}
 		}
 
+	}
+
+	private List<Object> getSingleObject(Boolean isRead, String sql, Set<Param> params) throws SQLException {
+		PreparedStatement statement = getStatementBySql(isRead, sql);
+		if (getConnectionManager().isShowSql()) {
+			log.info(sql);
+		}
+		setWhereSqlParamValue(params, statement);
+		return getRztObject(statement.executeQuery());
 	}
 
 	private List<POJO> getSingleObject(Boolean isRead, Set<Param> params, String sql, String... strings)
@@ -1444,6 +1495,20 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		return sb.toString();
 	}
 
+	private List<Object> querylist(List<QueryVo<PreparedStatement>> pss)
+			throws InterruptedException, ExecutionException {
+		if (pss != null && pss.size() > 0) {
+			List<Future<QueryVo<ResultSet>>> rzs = invokeQueryAll(pss);
+			List<Object> pos = new ArrayList<>();
+			for (Future<QueryVo<ResultSet>> f : rzs) {
+				pos.addAll(getRztObject(f.get().getOv()));
+			}
+			return pos;
+		} else {
+			return new ArrayList<>(0);
+		}
+	}
+
 	private List<POJO> querylist(List<QueryVo<PreparedStatement>> pss, String... strings)
 			throws InterruptedException, ExecutionException {
 		if (pss != null && pss.size() > 0) {
@@ -1516,6 +1581,19 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 	}
 
+	private List<Object> getRztObject(ResultSet rs) {
+		try {
+			List<Object> ts = new ArrayList<>();
+			while (rs.next()) {
+				ts.add(rs.getObject(1));
+			}
+			return ts;
+		} catch (SQLException e) {
+			e.printStackTrace();
+			throw new IllegalStateException(e);
+		}
+	}
+
 	protected List<POJO> getRztObject(ResultSet rs, String... strings) {
 		List<POJO> pos = new ArrayList<>();
 		try {
@@ -1545,12 +1623,12 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				}
 				pos.add(po);
 			}
+			return pos;
 		} catch (Exception e) {
 			e.printStackTrace();
 			throw new IllegalStateException(e);
 		}
 
-		return pos;
 	}
 
 	/**

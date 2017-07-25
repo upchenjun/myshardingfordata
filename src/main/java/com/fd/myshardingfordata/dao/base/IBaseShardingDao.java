@@ -341,4 +341,22 @@ public interface IBaseShardingDao<POJO> {
 	 * @return
 	 */
 	PageData<POJO> getPageInfo(Set<Param> pms, int curPage, int pageSize, String... cls);
+
+	/**
+	 * 获取属性值列表
+	 * 
+	 * @param property
+	 * @param params
+	 * @return
+	 */
+	List<Object> getVlList(String property, Set<Param> params);
+
+	/**
+	 * 获取属性值列表
+	 * 
+	 * @param property
+	 * @param params
+	 * @return
+	 */
+	List<Object> getVlListFromMaster(String property, Set<Param> params);
 }
