@@ -2094,7 +2094,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			while (rs.next()) {
 				String dbtbn = rs.getString("TABLE_NAME");
 				String schem = rs.getString("TABLE_SCHEM");
-				String[] tbsps = dbtbn.toUpperCase().split(srctb.toUpperCase());
+				String[] tbsps = dbtbn.toUpperCase().split("^" + srctb.toUpperCase());
 				char z = 'n';
 				if (tbsps.length == 2) {
 					String ts = tbsps[1].replaceAll("_", "");
