@@ -736,11 +736,21 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	public Integer saveList(List<POJO> pojos) {
 		int i = 0;
 		if (pojos != null) {
+			boolean istransaction = getConnectionManager().isTransactioning();
 			try {
+				if (!istransaction) {
+					getConnectionManager().beginTransaction();
+				}
 				for (POJO po : pojos) {
 					i += persist(po);
 				}
-			} catch (Exception e) {
+				if (!istransaction) {
+					getConnectionManager().commitTransaction();
+				}
+			} catch (Throwable e) {
+				if (!istransaction) {
+					getConnectionManager().rollbackTransaction();
+				}
 				e.printStackTrace();
 				throw new IllegalArgumentException(e);
 			} finally {

@@ -12,16 +12,35 @@ public interface IConnectionManager {
 
 	Connection getConnection();
 
+	/**
+	 * 开启事务
+	 */
 	void beginTransaction();
 
+	/**
+	 * 是否已经开启事务
+	 * 
+	 * @return
+	 */
 	boolean isTransactioning();
 
+	/**
+	 * 提交事务
+	 */
 	void commitTransaction();
 
 	void closeConnection();
 
+	/**
+	 * 回滚事务
+	 */
 	void rollbackTransaction();
 
+	/**
+	 * 是否自动创建表和索引
+	 * 
+	 * @return
+	 */
 	boolean isGenerateDdl();
 
 	Connection getWriteConnection();
