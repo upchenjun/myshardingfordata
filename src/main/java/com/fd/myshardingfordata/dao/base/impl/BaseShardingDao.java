@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
@@ -2067,10 +2067,10 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	/**
 	 * 实体类对应的当前已经分表的表名集合
 	 */
-	private volatile static ConcurrentHashMap<Class<?>, CopyOnWriteArraySet<String>> CUR_TABLES = new ConcurrentHashMap<Class<?>, CopyOnWriteArraySet<String>>();
+	private volatile static ConcurrentHashMap<Class<?>, ConcurrentSkipListSet<String>> CUR_TABLES = new ConcurrentHashMap<Class<?>, ConcurrentSkipListSet<String>>();
 
 	protected Set<String> getCurrentTables() {
-		CopyOnWriteArraySet<String> tbns = CUR_TABLES.get(clazz);
+		ConcurrentSkipListSet<String> tbns = CUR_TABLES.get(clazz);
 		if (tbns == null) {
 			synchronized (CUR_TABLES) {
 				if (tbns == null) {
@@ -2086,10 +2086,10 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		reFreshTables();
 	}
 
-	private CopyOnWriteArraySet<String> reFreshTables() {
+	private ConcurrentSkipListSet<String> reFreshTables() {
 		try {
 			ResultSet rs = getTableMeta(getConnectionManager().getConnection());
-			CopyOnWriteArraySet<String> tbns = new CopyOnWriteArraySet<String>();
+			ConcurrentSkipListSet<String> tbns = new ConcurrentSkipListSet<String>();
 			String srctb = ConnectionManager.getTbinfo(clazz).entrySet().iterator().next().getKey();
 			while (rs.next()) {
 				String dbtbn = rs.getString("TABLE_NAME");
