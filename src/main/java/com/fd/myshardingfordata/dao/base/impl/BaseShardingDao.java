@@ -1318,7 +1318,9 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 							int step = csum - start;
 							if (step < q.getOv().intValue()) {
 								startindex = q.getOv().intValue() - step;
-								initSize = step;
+								if (step < pageSize) {
+									initSize = step;
+								}
 							}
 						}
 						rdsum += initSize;
