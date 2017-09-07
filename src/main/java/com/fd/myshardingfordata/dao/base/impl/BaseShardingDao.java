@@ -838,6 +838,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 				String ctbname = getTableName(max, name);
 				if (!isExistTable(ctbname)) {
 					synchronized (FIRST_TABLECREATE) {
+						reFreshTables();
 						if (!isExistTable(ctbname)) {
 							String dpname = getConnectionManager().getConnection().getMetaData()
 									.getDatabaseProductName();
