@@ -2118,10 +2118,10 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					}
 				}
 				if (tbsps.length == 0 || (z >= '0' && z <= '9') || (z >= 0 && z <= 9)) {
-					if (schem != null && schem.length() > 0) {
-						dbtbn = schem + "." + dbtbn;
-					}
 					if (dbtbn.startsWith(srctb)) {
+						if (schem != null && schem.length() > 0) {
+							dbtbn = schem + "." + dbtbn;
+						}
 						tbns.add(dbtbn);
 					}
 				}
