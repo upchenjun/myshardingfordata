@@ -2086,6 +2086,7 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		ConcurrentSkipListSet<String> tbns = CUR_TABLES.get(clazz);
 		if (tbns == null) {
 			synchronized (CUR_TABLES) {
+				tbns = CUR_TABLES.get(clazz);
 				if (tbns == null) {
 					tbns = reFreshTables();
 				}
