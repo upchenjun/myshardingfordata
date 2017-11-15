@@ -22,6 +22,8 @@ public class PropInfo {
 	private ColumnRule columnRule;
 	// 属性类型
 	private Class<?> type;
+	// java.sql.Types,数据库字段类型
+	private Integer sqlTypes;
 	// 是否大字段
 	private Boolean isLob = false;
 	// 字段长度
@@ -141,6 +143,14 @@ public class PropInfo {
 
 	public void setColumnRule(ColumnRule columnRule) {
 		this.columnRule = columnRule;
+	}
+
+	public Integer getSqlTypes() {
+		return sqlTypes;
+	}
+
+	public void setSqlTypes(Integer sqlTypes) {
+		this.sqlTypes = sqlTypes;
 	}
 
 }

@@ -13,6 +13,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -1825,15 +1826,22 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 	}
 
 	private Object getParamSqlValue(Object o, String pname) {
-		if (o != null && o.getClass().isEnum()) {
-			EnumType et = isEnum(pname);
-			if (et != null) {
+		if (o != null && !(o instanceof String) && !(o instanceof Number)) {
+			PropInfo pp = getPropInfo(pname);
+			if (o.getClass().isEnum() && pp.getType().isEnum()) {
+				EnumType et = pp.getEnumType();
 				if (et.equals(EnumType.STRING)) {
 					return o.toString();
 				} else {
-					PropInfo pp = getPropInfo(pname);
 					Class<Enum> cls = (Class<Enum>) pp.getType();
 					return Enum.valueOf(cls, o.toString()).ordinal();
+				}
+			} else if (pp.getSqlTypes() != null) {
+				if (pp.getSqlTypes().equals(Types.DATE)) {
+					Date dt = (Date) o;
+					Date ddd = Date.from(dt.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+							.atStartOfDay(ZoneId.systemDefault()).toInstant());
+					return ddd;
 				}
 			}
 		}
@@ -1846,18 +1854,6 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 			for (PropInfo pp : pps) {
 				if (pp.getPname().equals(pname)) {
 					return pp;
-				}
-			}
-		}
-		return null;
-	}
-
-	protected EnumType isEnum(String pname) {
-		if (pname != null) {
-			Set<PropInfo> pps = getPropInfos();
-			for (PropInfo pp : pps) {
-				if (pp.getPname().equals(pname) && pp.getType().isEnum()) {
-					return pp.getEnumType();
 				}
 			}
 		}
@@ -2232,20 +2228,42 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 
 	@PostConstruct
 	public void init() {
+		final Set<PropInfo> pps = getPropInfos();
 		if (getConnectionManager().isGenerateDdl()) {
-			NEW_FIXED_THREAD_POOL.execute(() -> createFirstTable());
+			NEW_FIXED_THREAD_POOL.execute(() -> {
+				createFirstTable(pps);
+				setSqlType(pps);
+			});
+		} else {
+			setSqlType(pps);
+		}
+
+	}
+
+	private void setSqlType(Set<PropInfo> pps) {
+		try {
+			Connection connection = getConnectionManager().getConnection();
+			ResultSet crs = connection.getMetaData().getColumns(connection.getCatalog(), null, getFirstTableName(),
+					null);
+			while (crs.next()) {
+				for (PropInfo o : pps) {
+					if (crs.getString("COLUMN_NAME").equals(o.getCname()) && o.getSqlTypes() == null) {
+						o.setSqlTypes(crs.getInt("DATA_TYPE"));
+						break;
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			throw new IllegalStateException(e);
+		} finally {
+			getConnectionManager().closeConnection();
 		}
 	}
 
-	private void createFirstTable() {
+	private void createFirstTable(Set<PropInfo> pps) {
 		try {
-			String tableName = clazz.getSimpleName();
-			if (clazz.isAnnotationPresent(Table.class)) {
-				String tbn = clazz.getAnnotation(Table.class).name().trim();
-				if (tbn.length() > 0) {
-					tableName = tbn;
-				}
-			}
+			String tableName = getFirstTableName();
 			boolean isNotExists = true;
 			Connection connection = getConnectionManager().getConnection();
 			ResultSet rs = getTableMeta(connection);
@@ -2256,7 +2274,6 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 					break;
 				}
 			}
-			Set<PropInfo> pps = getPropInfos();
 			if (isNotExists) {
 				String csql = createTable(tableName);
 				if (csql != null && csql.trim().length() > 0) {
@@ -2335,6 +2352,17 @@ public abstract class BaseShardingDao<POJO> implements IBaseShardingDao<POJO> {
 		} finally {
 			getConnectionManager().closeConnection();
 		}
+	}
+
+	private String getFirstTableName() {
+		String tableName = clazz.getSimpleName();
+		if (clazz.isAnnotationPresent(Table.class)) {
+			String tbn = clazz.getAnnotation(Table.class).name().trim();
+			if (tbn.length() > 0) {
+				tableName = tbn;
+			}
+		}
+		return tableName;
 	}
 
 	private String getIndexColumns(PropInfo p) {
